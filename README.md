@@ -1,5 +1,19 @@
 # 🎮 Game Glitch Investigator: The Impossible Guesser
 
+## Base Project
+
+This project extends **Game Glitch Investigator** (Module 1,
+[original repo](https://github.com/adiilkariim/ai110-module1show-gameglitchinvestigator-starter)).
+It started as a Streamlit number-guessing game that an AI wrote full of bugs:
+the player guesses a secret number within a difficulty's range (Easy 1-20,
+Normal 1-100, Hard 1-50) and a limited number of attempts, getting
+"Go Higher / Go Lower" hints and a score. In Module 1, I found and fixed 8 bugs
+(inverted hints, wrong attempt count, broken New Game, unchecked input), moved
+the game logic into `logic_utils.py`, added 9 pytest tests, and added
+Hot/Cold hints and a Guess History sidebar.
+
+**Why I chose it:** I chose this project because I'm passionate about games and plan to become a game developer, so building on a game felt like the right fit.
+
 ## 🚨 The Situation
 
 You asked an AI to build a simple "Number Guessing Game" using Streamlit.
