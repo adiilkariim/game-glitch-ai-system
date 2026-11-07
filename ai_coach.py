@@ -114,12 +114,14 @@ def build_prompt(low, high, history, hints, possible, few_shot=True):
     """
     Build the prompt sent to Gemini.
 
-    The prompt only holds the game range, the guesses, their hints and the
-    numbers still possible. It never holds the secret.
+    The prompt only holds what the player can see (the game range, the
+    guesses and their hints). It never holds the secret.
 
     Args:
-        few_shot: True adds the examples and the strategy (specialized
-            prompt), False leaves them out (baseline prompt).
+        few_shot: True builds the specialized prompt: the strategy, the
+            few-shot examples and the numbers still possible from the PLAN
+            step. False builds the baseline prompt: only the game range and
+            the guesses, so the AI has to work everything out alone.
     """
     lines = [
         "You are a coach in a number-guessing game.",
@@ -137,7 +139,12 @@ def build_prompt(low, high, history, hints, possible, few_shot=True):
         "Now the real game:",
         f"Game range: {low} to {high}. "
         f"Guesses so far: {_describe_history(history, hints)}.",
-        f"Numbers still possible: {possible[0]} to {possible[1]}.",
+    ]
+    if few_shot:
+        lines.append(
+            f"Numbers still possible: {possible[0]} to {possible[1]}."
+        )
+    lines += [
         "",
         'Reply with only JSON like {"guess": <whole number>, '
         '"reason": "<one short sentence>"}.',
