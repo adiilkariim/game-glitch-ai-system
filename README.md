@@ -277,5 +277,6 @@ yourself and use your own creativity to solve problems well.
 ---
 
 The Module 1 bug-fixing work (8 bugs with before/after code) is documented in
-[reflection.md](reflection.md), and the AI collaboration notes are in
-[model_card.md](model_card.md) and [ai_interactions.md](ai_interactions.md).
+[reflection.md](reflection.md). The AI collaboration notes are in
+[model_card.md](model_card.md), and real agent traces (normal run, retry,
+fallback) are in [ai_interactions.md](ai_interactions.md).
