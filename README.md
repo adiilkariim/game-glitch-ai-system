@@ -1,4 +1,8 @@
-# 🎮 Game Glitch Investigator: The Impossible Guesser
+# 🎮 Game Glitch Investigator + AI Coach
+
+A Streamlit number-guessing game with a built-in **AI Coach**: an agent that
+plans, asks Google Gemini for the next guess, checks the answer with
+guardrails, and logs every step. The player decides whether to follow it.
 
 ## Base Project
 
@@ -14,144 +18,262 @@ Hot/Cold hints and a Guess History sidebar.
 
 **Why I chose it:** I chose this project because I'm passionate about games and plan to become a game developer, so building on a game felt like the right fit.
 
-## 🚨 The Situation
+## Summary: What's New
 
-You asked an AI to build a simple "Number Guessing Game" using Streamlit.
-It wrote the code, ran away, and now the game is unplayable. 
+The game now has an **AI Coach** (the 🤖 button in the bottom-right corner).
+When the player clicks it, an agent in `ai_coach.py` suggests the next guess
+and explains why, for example *"32 is the middle of the remaining numbers 21
+to 44."* The suggestion appears in a box next to the button.
 
-- You can't win.
-- The hints lie to you.
-- The secret number seems to have commitment issues.
+The coach is an **agentic workflow** with 4 steps:
 
-## 🛠️ Setup
+1. **PLAN:** plain Python works out which numbers are still possible from the
+   guess history (45 → Go LOWER and 20 → Go HIGHER leaves 21-44).
+2. **ACT:** a **specialized prompt** (a strategy, few-shot examples, and the
+   possible range) is sent to Gemini, which replies with JSON:
+   `{"guess": 32, "reason": "..."}`.
+3. **CHECK:** guardrails reject broken replies and impossible guesses, ask
+   Gemini one more time, and fall back to the middle of the range if it
+   still fails, so the game never crashes or shows a wrong suggestion.
+4. **LOG:** every step is written to `logs/coach.log`.
 
-1. Install dependencies: `pip install -r requirements.txt`
-2. Run the broken app: `python -m streamlit run app.py`
+**Why it matters:** it shows how to put an LLM inside an existing app safely.
+The AI never sees the secret number, its output is checked before the player
+sees it, the game keeps working when the AI is down, and a human (the
+player) makes the final decision.
 
-## 🕵️‍♂️ Your Mission
+## Architecture
 
-1. **Play the game.** Open the "Developer Debug Info" tab in the app to see the secret number. Try to win.
-2. **Find the State Bug.** Why does the secret number change every time you click "Submit"? Ask ChatGPT: *"How do I keep a variable from resetting in Streamlit when I click a button?"*
-3. **Fix the Logic.** The hints ("Higher/Lower") are wrong. Fix them.
-4. **Refactor & Test.** - Move the logic into `logic_utils.py`.
-   - Run `pytest` in your terminal.
-   - Keep fixing until all tests pass!
+![Architecture diagram](assets/mermaid-diagram.png)
 
-## 📝 Document Your Experience
+Source: [diagrams/architecture.mmd](diagrams/architecture.mmd)
 
-- [x] Describe the game's purpose.
-- [x] Detail which bugs you found.
-- [x] Explain what fixes you applied.
+- **Input:** the player either types a guess or clicks the AI Coach button.
+- **Game path:** a guess goes through the input guardrails (`parse_guess` and
+  the range check), then `check_guess` produces the hint, Hot/Cold and score.
+- **AI path:** the button sends only the range, the history and the hints
+  (never the secret) to the agent, which runs PLAN → ACT (Gemini) → CHECK,
+  with a retry and a fallback, and logs each step.
+- **Output:** the player sees the hint or the coach's suggestion and decides
+  what to do next (human-in-the-loop).
+- **Testing:** pytest checks the game logic and the agent's guardrails with a
+  mocked AI, and `evaluate.py` measures the real Gemini on 8 game situations.
 
-### 🎯 Game Purpose
+| File | Role |
+|---|---|
+| `app.py` | Streamlit UI, game state, AI Coach button and suggestion box |
+| `logic_utils.py` | Game logic: input parsing, hints, Hot/Cold, score |
+| `ai_coach.py` | The AI Coach agent (plan, act, check, log) |
+| `tests/` | 17 pytest tests (9 game logic, 8 AI Coach guardrails) |
+| `evaluate.py` | Evaluation of the real AI on 8 cases, prints a summary |
+| `diagrams/architecture.mmd` | Architecture diagram (Mermaid source) |
 
-The game's purpose is a number guessing game. The game has a secret number, and you need to guess it. The game picks a number automatically and gives you a place where you can enter your input. If the input you entered matches the secret number, you win, but if it doesn't, the game shows you feedback to make guessing easier for you. If the number you guessed is bigger than the secret, it tells you to go lower, but if the number you picked is lower than the secret number, it tells you to go higher so you can guess it. If you run out of attempts before guessing the secret number, you lose.
+## Setup
 
-The game also has a score. You get points when you win, and you get more points if you win in fewer attempts, but you lose points for every wrong guess.
+You need Python 3.10+ and a free Google Gemini API key from
+[aistudio.google.com](https://aistudio.google.com).
 
-The game has 3 types of difficulty, Easy, Normal and Hard, and each mode has its own limitations and features.
+1. Clone the repo and open the folder:
+   ```
+   git clone https://github.com/adiilkariim/game-glitch-ai-system.git
+   cd game-glitch-ai-system
+   ```
+2. Create and activate a virtual environment:
+   ```
+   python -m venv .venv
+   .\.venv\Scripts\Activate.ps1      # Windows PowerShell
+   source .venv/bin/activate         # macOS / Linux / Git Bash
+   ```
+3. Install the dependencies:
+   ```
+   pip install -r requirements.txt
+   ```
+4. Create a file named `.env` in the project folder with your key:
+   ```
+   GEMINI_API_KEY=your-key-here
+   ```
+   `.env` is in `.gitignore`, so the key is never committed. Without a key the
+   game still works: the coach uses its fallback suggestion.
+5. Run the game:
+   ```
+   python -m streamlit run app.py
+   ```
+6. Run the tests and the evaluation:
+   ```
+   python -m pytest
+   python evaluate.py
+   ```
 
-### 🐞 Bugs I Found
+The coach can also run without the game, from the command line:
+`python ai_coach.py LOW HIGH [GUESS:lower|higher ...]`.
 
-**1. The hints are inverted**
-The "Go Higher" and "Go Lower" hints are reversed. When my guess was too high, the game told me to go higher, and when it was too low, it told me to go lower.
+## Sample Interactions
 
-**2. The game ends one attempt early**
-The game told me I was out of attempts while I still had one try left.
+These are real runs with Gemini (`gemini-3.5-flash-lite`). The same agent
+runs when the 🤖 button is clicked in the game. Each run prints the agent's
+trace, then the suggestion.
 
-**3. New Game doesn't fully reset the game**
-I started a new game and clicked "New Game" before running out of attempts. All 8 attempts came back and the secret number changed, but the guess history from the previous game was still there. Starting a new game should clear the old history.
-
-**4. Out-of-range numbers are accepted**
-I entered very large and negative numbers, like "43095702347873234" and "-24356452054095". Instead of showing an error, the game treated them as normal guesses and gave me "Go Higher" or "Go Lower" hints. It should reject any number outside the allowed range.
-
-**5. Invalid input uses up an attempt**
-When I typed letters ("kfadjgdfghf"), the game correctly showed "That is not a number." However, it still counted that as one of my attempts. Invalid input shouldn't cost an attempt.
-
-**6. The game can't be restarted after a win**
-After I won, the game showed "You already won. Start a new game to play again." When I clicked "New Game", the attempts reset to 8 (Normal mode) and a new secret number appeared, but the game still didn't work:
-- The previous game's history wasn't cleared.
-- Entering a guess did nothing.
-
-The game stays stuck, and the only way to play again is to refresh the page.
-
-### 🛠️ Fixes I Applied
-
-- **Inverted hints (bug 1):** swapped the "Go Higher" / "Go Lower" messages in `check_guess`, and stopped turning the secret into text on even attempts, so the hints are now always correct.
-- **One attempt missing (bug 2):** the attempt counter now starts at `0` instead of `1`, so each mode gives its full number of attempts.
-- **Out-of-range numbers (bug 4):** guesses are now checked against the mode's range. Numbers outside it show "Out of range. Please enter a number between 1 and 100." (or the range of the selected mode) and don't cost an attempt.
-- **Invalid input (bug 5):** an attempt is now only counted after the input is confirmed to be a valid number.
-- **New Game (bugs 3 and 6):** the "New Game" button now resets the status to "playing", clears the history, and picks a secret inside the selected mode's range, so you can play again after a win or a loss.
-
-**Extra fixes I found along the way:**
-- Decimals like `50.5` are no longer cut down to `50`; they show "Please enter a whole number."
-- Changing the difficulty now starts a new game with a secret inside the new range.
-- The "Attempts left" number now updates right after each guess instead of one click late.
-
-More details, with the code before and after each fix, are in `reflection.md`.
-
-## 📸 Demo Walkthrough
-
-Describe your fixed game in numbered steps so a reader can follow along without watching a video:
-
-**Step 1:** The player picks a difficulty (Normal mode: 1 to 100, 8 attempts).
-
-![Step 1](steps%20images/step1.png)
-
-**Step 2:** The player enters the number 45 and clicks the **Submit Guess** button.
-
-![Step 2](steps%20images/step2.png)
-
-**Step 3:** The game says "Go LOWER!" (Attempts left: 7).
-
-![Step 3](steps%20images/step3.png)
-
-**Step 4:** The player enters the number 20.
-
-![Step 4](steps%20images/step4.png)
-
-**Step 5:** The game says "Go LOWER!" again.
-
-![Step 5](steps%20images/step5.png)
-
-**Step 6:** The player enters the number 5.
-
-![Step 6](steps%20images/step6.png)
-
-**Step 7:** The game says "Go HIGHER!".
-
-![Step 7](steps%20images/step7.png)
-
-**Step 8:** The player enters the number 6.
-
-![Step 8](steps%20images/step8.png)
-
-**Step 9:** The game says "Correct!" and "You won! The secret was 6. Final score: 45". The player won in 4 attempts.
-
-![Step 9](steps%20images/step9.png)
-
-**Step 10:** The player clicks the **New Game** button to start a new game.
-
-![Step 10](steps%20images/step10.png)
-
-## 🧪 Test Results
-
+**1. First guess in Normal mode (1-100), no history**
 ```
-(.venv) PS C:\Users\user4\Desktop\ai110-module1show-gameglitchinvestigator-starter> python -m pytest
-================================================================== test session starts ==================================================================
-platform win32 -- Python 3.13.15, pytest-9.1.1, pluggy-1.6.0
-rootdir: C:\Users\user4\Desktop\ai110-module1show-gameglitchinvestigator-starter
-plugins: anyio-4.15.1
-collected 9 items
+> python ai_coach.py 1 100
+START range=1-100 history=[] mode=few-shot
+PLAN numbers still possible: 1-100
+ACT try 1: AI replied '{"guess": 50, "reason": "50 is the middle of 1-100, so any hint cuts the options in half."}'
+CHECK try 1: passed, guess=50
+DONE source=ai
 
-tests\test_game_logic.py .........                                                                                                                 [100%]
-
-=================================================================== 9 passed in 0.03s ===================================================================
+Coach suggests 50 (source: ai): 50 is the middle of 1-100, so any hint cuts the options in half.
 ```
 
-## 🚀 Stretch Features
+**2. Normal mode after 45 → Go LOWER and 20 → Go HIGHER**
+```
+> python ai_coach.py 1 100 45:lower 20:higher
+START range=1-100 history=[45, 20] mode=few-shot
+PLAN numbers still possible: 21-44
+ACT try 1: AI replied '{"guess": 32, "reason": "32 is the middle of the remaining numbers 21 to 44."}'
+CHECK try 1: passed, guess=32
+DONE source=ai
 
-- [x] **Enhanced Game UI**
-  - **Hot/Cold hints:** wrong guesses now show 🔥 Hot!, 🌡️ Warm, or 🧊 Cold next to the Go Higher/Go Lower hint, based on how close the guess is to the secret (Hot is within 10% of the difficulty's range, Warm within 25%). This is done by the new `get_temperature()` function in `logic_utils.py`, which is used in the Submit Guess code in `app.py`.
-  - **Animated title:** the 🎮 emoji in the title plays a looping wiggle animation, added with CSS in the title `st.markdown` block in `app.py`.
-- [x] **Guess History sidebar:** the sidebar shows every valid guess of the current game with its hint (for example, `45 → Go LOWER! Cold`). Hints are hidden when "Show hint" is off, and the list clears on New Game or when the difficulty changes. Built in `app.py` with the `show_guess_history()` function.
+Coach suggests 32 (source: ai): 32 is the middle of the remaining numbers 21 to 44.
+```
+
+**3. Easy mode (1-20) after 3 guesses, only 2 numbers left**
+```
+> python ai_coach.py 1 20 10:higher 15:lower 12:higher
+START range=1-20 history=[10, 15, 12] mode=few-shot
+PLAN numbers still possible: 13-14
+ACT try 1: AI replied '{"guess": 13, "reason": "Only 13-14 are left, and 13 is the lower middle option."}'
+CHECK try 1: passed, guess=13
+DONE source=ai
+
+Coach suggests 13 (source: ai): Only 13-14 are left, and 13 is the lower middle option.
+```
+
+## Guardrails and Reliability
+
+**Guardrail run: the AI is unavailable (invalid API key)**
+```
+> $env:GEMINI_API_KEY="not-a-real-key"; python ai_coach.py 1 50 25:higher
+START range=1-50 history=[25] mode=few-shot
+PLAN numbers still possible: 26-50
+ACT try 1: AI call failed: 400 INVALID_ARGUMENT. {'error': {'code': 400, 'message': 'API key not valid. Please pass a valid API key.', 'status': 'I
+ACT try 2: AI call failed: 400 INVALID_ARGUMENT. {'error': {'code': 400, 'message': 'API key not valid. Please pass a valid API key.', 'status': 'I
+FALLBACK guess=38
+DONE source=fallback
+
+Coach suggests 38 (source: fallback): The AI coach was unavailable, so this is the middle of 26-50.
+```
+(After trying this, run `Remove-Item Env:GEMINI_API_KEY` or open a new
+terminal, so the real key from `.env` is used again.)
+
+The same fallback also happened for real during development, when Gemini
+returned `503 UNAVAILABLE` ("high demand"): the game kept working.
+
+**All guardrails**
+
+| Input | Guardrail | Result |
+|---|---|---|
+| Guess `abc` | `parse_guess` | "That is not a number.", no attempt used |
+| Guess `50.5` | `parse_guess` | "Please enter a whole number.", no attempt used |
+| Empty guess | `parse_guess` | "Enter a guess.", no attempt used |
+| Guess `500` in Normal mode | Range check in `app.py` | "Out of range. Please enter a number between 1 and 100.", no attempt used |
+| AI replies `I think 32!` (not JSON) | CHECK: `parse_reply` | Rejected, Gemini is asked again |
+| AI suggests `90` when only 21-44 is possible | CHECK: range check | Rejected, Gemini is asked again |
+| AI fails twice (bad key, 503, no internet) | FALLBACK | Suggests the middle of the possible range |
+| Any coach request | The agent has no `secret` parameter | The secret is never in the prompt |
+| Any coach request | LOG | Every step written to `logs/coach.log` |
+| Click 🤖 after the game is over | `app.py` stops before the coach | No suggestion shown |
+
+The AI rows are checked by the tests in `tests/test_ai_coach.py`, which use a
+mocked AI so they can force failures that the real Gemini can't produce on
+demand.
+
+## Testing Summary
+
+**Unit tests: 17 out of 17 passed**
+```
+> python -m pytest -v
+tests/test_ai_coach.py::test_possible_range_uses_the_hints PASSED
+tests/test_ai_coach.py::test_parse_reply_reads_json_inside_extra_text PASSED
+tests/test_ai_coach.py::test_good_ai_answer_is_accepted PASSED
+tests/test_ai_coach.py::test_broken_answer_is_retried PASSED
+tests/test_ai_coach.py::test_out_of_range_guess_is_rejected PASSED
+tests/test_ai_coach.py::test_ai_failure_falls_back_to_the_middle PASSED
+tests/test_ai_coach.py::test_secret_is_never_sent_to_the_ai PASSED
+tests/test_ai_coach.py::test_every_step_is_logged PASSED
+tests/test_game_logic.py::test_winning_guess PASSED
+tests/test_game_logic.py::test_guess_too_high PASSED
+tests/test_game_logic.py::test_guess_too_low PASSED
+tests/test_game_logic.py::test_too_high_hint_says_go_lower PASSED
+tests/test_game_logic.py::test_too_low_hint_says_go_higher PASSED
+tests/test_game_logic.py::test_letters_are_rejected PASSED
+tests/test_game_logic.py::test_decimal_is_rejected PASSED
+tests/test_game_logic.py::test_empty_input_is_rejected PASSED
+tests/test_game_logic.py::test_symbols_are_rejected PASSED
+============================= 17 passed in 0.05s ==============================
+```
+
+**Evaluation with the real Gemini: specialized prompt 8/8, plain prompt 1/8**
+
+`evaluate.py` runs 8 game situations twice: with the specialized prompt the
+game uses, and with a plain baseline prompt (only the range and the guesses).
+A case passes when the AI answers, picks the middle of the possible numbers,
+replies with clean JSON, and names the numbers still possible in its reason.
+In the output, the "Few-shot" column is the specialized prompt.
+```
+> python evaluate.py
+=== SUMMARY ===
+                          Few-shot    Baseline
+AI answered               8/8         8/8
+Valid on 1st try          8/8         8/8
+Picked the middle         8/8         8/8
+Clean JSON reply          8/8         4/8
+Reason names the range    8/8         3/8
+Overall PASS              8/8         1/8
+Avg reason length         11.0        14.2  (words)
+```
+
+**What worked, what didn't, what I learned**
+- All 17 tests pass, and the specialized prompt passed all 8 evaluation cases.
+- Both prompts chose the right number 8/8 times. The difference was in the
+  answer: the specialized prompt always replied with clean JSON and told the
+  player exactly which numbers were left; the plain prompt often wrapped its
+  JSON in a code block and used vague reasons ("statistically optimal").
+- The first evaluation showed no difference at all, because both prompts
+  were given the possible range. Making the baseline a truly plain prompt
+  and measuring the explanation showed the real difference.
+- The guardrails were needed for real: the first model name was retired
+  (404), and larger models returned `503 high demand`. The fallback kept the
+  game working each time.
+- Results can vary between runs, so the temperature is set to 0. The same
+  question asked 3 times gave the same guess (32) each time.
+
+## Design Decisions
+
+- **The range math is plain Python, not AI.** Working out the possible numbers
+  is exact logic, so code does it and the AI gets the result. This keeps the
+  AI's job small and makes its answer easy to check.
+- **The secret is never given to the agent.** `get_coach_advice` has no
+  `secret` parameter, so the secret can't leak into a prompt by mistake.
+- **Fallback instead of an error.** If the AI fails, the player still gets a
+  sensible suggestion, marked as a fallback. Trade-off: the fallback is a
+  simple rule, so it gives no AI explanation.
+- **The player decides.** The coach only suggests. Asking costs no attempt
+  and the guess is still typed by the player (human-in-the-loop).
+- **Gemini free tier, `gemini-3.5-flash-lite`.** Free with no credit card. The
+  smaller model was chosen because the larger ones were often overloaded.
+  Trade-off: each answer takes a few seconds.
+- **Mocked AI in the unit tests, real AI in the evaluation.** The mock makes
+  the tests fast, free and able to force failures; `evaluate.py` measures the
+  real model.
+
+## Reflection
+
+<!-- TODO (student): 2-4 sentences in your own words on what this project
+taught you about AI and problem-solving. -->
+
+---
+
+The Module 1 bug-fixing work (8 bugs with before/after code) is documented in
+[reflection.md](reflection.md), and the AI collaboration notes are in
+[model_card.md](model_card.md) and [ai_interactions.md](ai_interactions.md).

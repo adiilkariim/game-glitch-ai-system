@@ -256,7 +256,9 @@ def get_coach_advice(low, high, history, hints, few_shot=True,
         try:
             reply = ask_fn(prompt)
         except Exception as error:
-            log_step(f"ACT try {attempt}: AI call failed: {error}")
+            # only the start of the error, so the log stays readable
+            short_error = str(error)[:120]
+            log_step(f"ACT try {attempt}: AI call failed: {short_error}")
             continue
         log_step(f"ACT try {attempt}: AI replied {reply.strip()[:200]!r}")
 
@@ -284,3 +286,39 @@ def get_coach_advice(low, high, history, hints, few_shot=True,
     log_step("DONE source=fallback")
     return {"guess": guess, "reason": reason, "source": "fallback",
             "possible": possible, "trace": trace}
+
+
+# ---------------------------------------------------------------------------
+# Command line: run the coach without the game, for demos
+# ---------------------------------------------------------------------------
+
+USAGE = """Usage: python ai_coach.py LOW HIGH [GUESS:lower|higher ...]
+Example: python ai_coach.py 1 100 45:lower 20:higher
+(45:lower means you guessed 45 and the game said Go LOWER)"""
+
+
+def _main(args):
+    try:
+        low, high = int(args[0]), int(args[1])
+        history, hints = [], []
+        for item in args[2:]:
+            number, direction = item.split(":")
+            if direction.lower() not in ("lower", "higher"):
+                raise ValueError(direction)
+            history.append(int(number))
+            hints.append(f"Go {direction.upper()}!")
+    except (IndexError, ValueError):
+        print(USAGE)
+        return
+
+    advice = get_coach_advice(low, high, history, hints)
+    for step in advice["trace"]:
+        print(step)
+    print()
+    print(f"Coach suggests {advice['guess']} "
+          f"(source: {advice['source']}): {advice['reason']}")
+
+
+if __name__ == "__main__":
+    import sys
+    _main(sys.argv[1:])
