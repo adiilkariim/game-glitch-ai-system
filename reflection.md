@@ -33,13 +33,12 @@ Document at least 3 bugs you found. Add rows as needed.
 Terminal output when I ran the game:
 
 ```
-(.venv) PS C:\Users\user4\Desktop\ai110-module1show-gameglitchinvestigator-starter> python -m streamlit run app.py
+(.venv) PS ...\ai110-module1show-gameglitchinvestigator-starter> python -m streamlit run app.py
 2026-10-03 15:06:34.834 Uvicorn server started on :::8501
 
   You can now view your Streamlit app in your browser.
 
   Local URL: http://localhost:8501
-  Network URL: http://10.14.0.2:8501
 ```
 
 #### A problem I faced while playing (proof the game was run)

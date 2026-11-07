@@ -269,8 +269,10 @@ Avg reason length         11.0        14.2  (words)
 
 ## Reflection
 
-<!-- TODO (student): 2-4 sentences in your own words on what this project
-taught you about AI and problem-solving. -->
+From my experience, AI is a tool, not everything. It's one of many tools you
+can use to solve a problem or reach the outcome you need. It is faster and
+better at some things, but not at everything. You still need to think for
+yourself and use your own creativity to solve problems well.
 
 ---
 
