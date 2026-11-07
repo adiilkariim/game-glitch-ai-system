@@ -31,6 +31,7 @@ coverage.xml
 
 # Logs
 *.log
+logs/
 
 # OS generated files
 .DS_Store
@@ -42,3 +43,7 @@ Thumbs.db
 .claude/
 *.swp
 *.swo
+
+# Assignment instructions (local only)
+tasks-grading.md
+CLAUDE.md
