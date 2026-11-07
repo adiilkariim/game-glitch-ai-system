@@ -142,15 +142,73 @@ raw_guess = st.text_input(
     key=f"guess_input_{difficulty}"
 )
 
-col1, col2, col3, col4 = st.columns(4)
+col1, col2, col3 = st.columns(3)
 with col1:
     submit = st.button("Submit Guess 🚀")
 with col2:
     new_game = st.button("New Game 🔁")
 with col3:
-    ask_coach = st.button("Ask AI Coach 🤖")
-with col4:
     show_hint = st.checkbox("Show hint", value=True, key="show_hint")
+
+# UI: the AI Coach button is a square with the 🤖 emoji in the middle,
+# fixed in the bottom-right corner of the screen
+st.markdown(
+    """
+    <style>
+    .st-key-coach_button {
+        position: fixed;
+        bottom: 2rem;
+        right: 2rem;
+        width: auto;
+        z-index: 1000;
+    }
+    .st-key-coach_button button {
+        width: 4.5rem;
+        height: 4.5rem;
+        border-radius: 0.75rem;
+        font-size: 2.2rem;
+        padding: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .st-key-coach_button button p {
+        font-size: 2.2rem;
+    }
+    /* the coach's answer: a rectangle in the same style as the square,
+       placed just to the left of it */
+    .st-key-coach_message {
+        position: fixed;
+        bottom: 2rem;
+        right: 7.25rem;
+        width: auto;
+        max-width: min(22rem, 60vw);
+        min-height: 4.5rem;
+        padding: 0.5rem 1rem;
+        display: flex;
+        justify-content: center;
+        border-radius: 0.75rem;
+        border: 1px solid rgba(49, 51, 63, 0.2);
+        background-color: #ffffff;
+        color: rgb(49, 51, 63);
+        z-index: 1000;
+    }
+    .st-key-coach_message p {
+        margin: 0;
+    }
+    @media (prefers-color-scheme: dark) {
+        .st-key-coach_message {
+            border-color: rgba(250, 250, 250, 0.2);
+            background-color: rgb(19, 23, 32);
+            color: rgb(250, 250, 250);
+        }
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+with st.container(key="coach_button"):
+    ask_coach = st.button("🤖", help="Ask the AI Coach for a hint")
 
 # FIX: I found the game got stuck after a win; Claude found New Game never
 # reset the status or history and always used 1-100, fixed all three, and
@@ -175,18 +233,19 @@ if st.session_state.status != "playing":
 # never the secret. Asking it does not cost an attempt, and the player
 # decides whether to follow its suggestion.
 if ask_coach:
-    with st.spinner("The AI Coach is thinking..."):
-        advice = get_coach_advice(
-            low, high, st.session_state.history, st.session_state.hints
-        )
-    if advice["source"] == "ai":
-        st.info(
-            f"🤖 Coach suggests **{advice['guess']}**: {advice['reason']}"
-        )
-    else:
-        st.warning(
-            f"🤖 Fallback suggestion **{advice['guess']}**: "
-            f"{advice['reason']}"
+    # UI: the "thinking" message and then the answer both show in a
+    # rectangle next to the 🤖 square
+    with st.container(key="coach_message"):
+        with st.spinner("The AI Coach is thinking..."):
+            advice = get_coach_advice(
+                low, high, st.session_state.history, st.session_state.hints
+            )
+        if advice["source"] == "ai":
+            label = "Coach suggests"
+        else:
+            label = "Fallback suggestion"
+        st.markdown(
+            f"**{label} {advice['guess']}**: {advice['reason']}"
         )
 
 if submit:
