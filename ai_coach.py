@@ -171,7 +171,7 @@ def ask_gemini(prompt):
     response = client.models.generate_content(
         model=os.getenv("GEMINI_MODEL", DEFAULT_MODEL),
         contents=prompt,
-        config=types.GenerateContentConfig(temperature=0.2),
+        config=types.GenerateContentConfig(temperature=0),
     )
     return response.text or ""
 

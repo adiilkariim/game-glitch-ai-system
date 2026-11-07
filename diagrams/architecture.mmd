@@ -1,0 +1,37 @@
+flowchart TD
+    Player([Player])
+
+    subgraph Game["Game (app.py + logic_utils.py)"]
+        Guard["Input guardrails<br/>parse_guess + range check"]
+        Check["check_guess<br/>hint + Hot/Cold + score"]
+        Guard -->|valid guess| Check
+    end
+
+    subgraph Agent["AI Coach agent (ai_coach.py)"]
+        Plan["1. PLAN<br/>numbers still possible"]
+        Act["2. ACT<br/>specialized prompt"]
+        Verify["3. CHECK<br/>valid JSON and in range?"]
+        Fallback["FALLBACK<br/>middle of the range"]
+        Plan --> Act --> Verify
+        Verify -->|no: retry once| Act
+        Verify -->|still failing| Fallback
+    end
+
+    Player -->|types a guess| Guard
+    Player -->|"clicks AI Coach:<br/>range, history, hints<br/>(never the secret)"| Plan
+    Act <-->|prompt / JSON| Gemini[["Gemini API"]]
+    Agent -.->|4. LOG each step| Log[("logs/coach.log")]
+
+    Result([Player sees the result])
+    Guard -->|invalid: error,<br/>no attempt used| Result
+    Check -->|hint| Result
+    Verify -->|"yes: suggestion<br/>(player decides = human-in-the-loop)"| Result
+    Fallback -->|suggestion| Result
+
+    subgraph Testing["Testing and evaluation"]
+        Pytest["pytest: 17 tests<br/>(AI mocked)"]
+        Eval["evaluate.py: 8 cases<br/>real Gemini, specialized vs baseline"]
+    end
+    Game -.->|checked by| Pytest
+    Agent -.->|checked by| Pytest
+    Agent -.->|measured by| Eval
