@@ -10,6 +10,8 @@ from logic_utils import (
     update_score,
     get_temperature,
 )
+# AI FEATURE: the AI Coach agent that suggests the next guess
+from ai_coach import get_coach_advice
 
 st.set_page_config(page_title="Glitchy Guesser", page_icon="🎮")
 
@@ -140,12 +142,14 @@ raw_guess = st.text_input(
     key=f"guess_input_{difficulty}"
 )
 
-col1, col2, col3 = st.columns(3)
+col1, col2, col3, col4 = st.columns(4)
 with col1:
     submit = st.button("Submit Guess 🚀")
 with col2:
     new_game = st.button("New Game 🔁")
 with col3:
+    ask_coach = st.button("Ask AI Coach 🤖")
+with col4:
     show_hint = st.checkbox("Show hint", value=True, key="show_hint")
 
 # FIX: I found the game got stuck after a win; Claude found New Game never
@@ -166,6 +170,24 @@ if st.session_state.status != "playing":
     else:
         st.error("Game over. Start a new game to try again.")
     st.stop()
+
+# AI FEATURE: the coach only gets the range, the guesses and their hints,
+# never the secret. Asking it does not cost an attempt, and the player
+# decides whether to follow its suggestion.
+if ask_coach:
+    with st.spinner("The AI Coach is thinking..."):
+        advice = get_coach_advice(
+            low, high, st.session_state.history, st.session_state.hints
+        )
+    if advice["source"] == "ai":
+        st.info(
+            f"🤖 Coach suggests **{advice['guess']}**: {advice['reason']}"
+        )
+    else:
+        st.warning(
+            f"🤖 Fallback suggestion **{advice['guess']}**: "
+            f"{advice['reason']}"
+        )
 
 if submit:
     ok, guess_int, err = parse_guess(raw_guess)
