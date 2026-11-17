@@ -1,4 +1,7 @@
+import html
 import random
+import re
+
 import streamlit as st
 # FIX: I asked Claude to move the game logic out of app.py; it moved the 4
 # functions into logic_utils.py and updated this import, keeping only the UI
@@ -11,7 +14,7 @@ from logic_utils import (
     get_temperature,
 )
 # AI FEATURE: the AI Coach agent that suggests the next guess
-from ai_coach import get_coach_advice
+from ai_coach import answer_question
 
 st.set_page_config(page_title="Glitchy Guesser", page_icon="🎮")
 
@@ -78,6 +81,17 @@ if "history" not in st.session_state:
 if "hints" not in st.session_state:
     st.session_state.hints = []
 
+# AI FEATURE: the coach panel's state: open or closed, the chat messages,
+# and the coach's last suggestion (so the player can ask about it)
+if "chat_open" not in st.session_state:
+    st.session_state.chat_open = False
+
+if "chat_messages" not in st.session_state:
+    st.session_state.chat_messages = []
+
+if "last_advice" not in st.session_state:
+    st.session_state.last_advice = None
+
 # FIX: I asked Claude to fix it after it found Hard mode could keep a secret
 # like 81 that can't be guessed; now changing the difficulty starts a new game
 # with a secret in range
@@ -88,6 +102,8 @@ if st.session_state.get("difficulty") != difficulty:
     st.session_state.status = "playing"
     st.session_state.history = []
     st.session_state.hints = []
+    st.session_state.chat_messages = []
+    st.session_state.last_advice = None
 
 st.subheader("Make a guess")
 
@@ -150,8 +166,8 @@ with col2:
 with col3:
     show_hint = st.checkbox("Show hint", value=True, key="show_hint")
 
-# UI: the AI Coach button is a square with the 🤖 emoji in the middle,
-# fixed in the bottom-right corner of the screen
+# UI: the AI Coach is a square 🤖 button fixed in the bottom-right corner.
+# Clicking it opens or closes a tall chat panel just above it.
 st.markdown(
     """
     <style>
@@ -160,7 +176,7 @@ st.markdown(
         bottom: 2rem;
         right: 2rem;
         width: auto;
-        z-index: 1000;
+        z-index: 1001;
     }
     .st-key-coach_button button {
         width: 4.5rem;
@@ -175,40 +191,223 @@ st.markdown(
     .st-key-coach_button button p {
         font-size: 2.2rem;
     }
-    /* the coach's answer: a rectangle in the same style as the square,
-       placed just to the left of it */
-    .st-key-coach_message {
+    /* the chat panel: a tall rectangle in the same style as the square,
+       placed just above it */
+    .st-key-coach_panel {
         position: fixed;
-        bottom: 2rem;
-        right: 7.25rem;
-        width: auto;
-        max-width: min(22rem, 60vw);
-        min-height: 4.5rem;
-        padding: 0.5rem 1rem;
-        display: flex;
-        justify-content: center;
+        bottom: 7.25rem;
+        right: 2rem;
+        width: min(22rem, calc(100vw - 4rem));
+        padding: 0.75rem;
         border-radius: 0.75rem;
         border: 1px solid rgba(49, 51, 63, 0.2);
         background-color: #ffffff;
         color: rgb(49, 51, 63);
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
         z-index: 1000;
     }
-    .st-key-coach_message p {
-        margin: 0;
-    }
     @media (prefers-color-scheme: dark) {
-        .st-key-coach_message {
+        .st-key-coach_panel {
             border-color: rgba(250, 250, 250, 0.2);
             background-color: rgb(19, 23, 32);
             color: rgb(250, 250, 250);
         }
     }
+    /* hide Streamlit's "Press Enter to submit form • 0/200" hint in the
+       chat box (the 200 character limit still applies) */
+    .st-key-coach_panel [data-testid="InputInstructions"] {
+        display: none;
+    }
+    /* quick-question buttons: small rounded pills */
+    .st-key-coach_chips button {
+        min-height: 0;
+        padding: 0.15rem 0.6rem;
+        border-radius: 999px;
+        border-color: #f97316;
+    }
+    .st-key-coach_chips button p {
+        font-size: 0.8rem;
+    }
+    /* chat bubbles: the player's messages on the right in orange,
+       the coach's messages on the left in grey */
+    .chat-row {
+        display: flex;
+        margin: 0.15rem 0;
+    }
+    .chat-row.user {
+        justify-content: flex-end;
+    }
+    .chat-row.ai {
+        justify-content: flex-start;
+    }
+    .bubble {
+        max-width: 80%;
+        padding: 0.45rem 0.75rem;
+        border-radius: 0.9rem;
+        font-size: 0.92rem;
+        line-height: 1.35;
+        overflow-wrap: break-word;
+    }
+    .bubble.user {
+        background-color: #f97316;
+        color: #ffffff;
+        border-bottom-right-radius: 0.25rem;
+    }
+    .bubble.ai {
+        background-color: #f0f2f6;
+        color: rgb(49, 51, 63);
+        border-bottom-left-radius: 0.25rem;
+    }
+    @media (prefers-color-scheme: dark) {
+        .bubble.ai {
+            background-color: rgb(38, 39, 48);
+            color: rgb(250, 250, 250);
+        }
+    }
+    /* the line before "Try this number" inside a coach answer */
+    .bubble hr.bubble-line {
+        margin: 0.4rem 0;
+        border: none;
+        border-top: 1px solid rgba(128, 128, 128, 0.45);
+    }
+    /* three dots that blink while the coach is thinking */
+    .typing span {
+        display: inline-block;
+        width: 0.4rem;
+        height: 0.4rem;
+        margin: 0 0.1rem;
+        border-radius: 50%;
+        background-color: #9a9a9a;
+        animation: typing-blink 1.4s infinite both;
+    }
+    .typing span:nth-child(2) {
+        animation-delay: 0.2s;
+    }
+    .typing span:nth-child(3) {
+        animation-delay: 0.4s;
+    }
+    @keyframes typing-blink {
+        0%, 80%, 100% { opacity: 0.25; }
+        40% { opacity: 1; }
+    }
     </style>
     """,
     unsafe_allow_html=True,
 )
+
+
+def toggle_coach_panel():
+    st.session_state.chat_open = not st.session_state.chat_open
+
+
+# UI: ready-made questions shown as buttons, for players who don't know
+# what to type
+QUICK_QUESTIONS = [
+    "What should I guess?",
+    "Why that number?",
+    "Which numbers are left?",
+]
+
+def ask_quick_question(text):
+    st.session_state.quick_question = text
+
+
+TYPING_DOTS = (
+    '<div class="chat-row ai"><div class="bubble ai typing">'
+    "<span></span><span></span><span></span></div></div>"
+)
+
+
+def chat_bubble(role, text):
+    """
+    Build the HTML of one chat bubble. The text is escaped first, so
+    nothing a player (or the AI) writes can inject HTML into the page;
+    only **bold** is turned into real bold text.
+    """
+    safe = html.escape(text)
+    safe = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", safe)
+    # a "---" line becomes a divider, other line breaks stay line breaks
+    safe = safe.replace("\n---\n", '<hr class="bubble-line">')
+    safe = safe.replace("\n", "<br>")
+    side = "user" if role == "user" else "ai"
+    return (f'<div class="chat-row {side}">'
+            f'<div class="bubble {side}">{safe}</div></div>')
+
+
 with st.container(key="coach_button"):
-    ask_coach = st.button("🤖", help="Ask the AI Coach for a hint")
+    st.button("🤖", help="Open Clue", on_click=toggle_coach_panel)
+
+# AI FEATURE: the coach panel. The coach only gets the range, the guesses
+# and their hints, never the secret. Using it does not cost an attempt, and
+# the player decides whether to follow its suggestion (human-in-the-loop).
+if st.session_state.chat_open:
+    with st.container(key="coach_panel"):
+        title_col, close_col = st.columns([4, 1])
+        with title_col:
+            st.markdown("**Clue**")
+        with close_col:
+            st.button("✕", key="coach_close", help="Close",
+                      on_click=toggle_coach_panel)
+
+        messages_box = st.container(height=320, border=False,
+                                    autoscroll=True)
+        # UI: a wide text box with a small Send button next to it
+        with st.form("coach_chat_form", clear_on_submit=True, border=False):
+            input_col, send_col = st.columns([4, 1],
+                                             vertical_alignment="bottom")
+            with input_col:
+                question = st.text_input(
+                    "Message Clue",
+                    placeholder="Type a message...",
+                    max_chars=200,
+                    label_visibility="collapsed",
+                )
+            with send_col:
+                send = st.form_submit_button("Send")
+
+        quick_question = st.session_state.pop("quick_question", None)
+        if quick_question:
+            question = quick_question
+        new_question = quick_question or (send and question.strip())
+        if new_question:
+            # the player's message shows right away, before the AI answers
+            st.session_state.chat_messages.append(("user", question))
+
+        with messages_box:
+            if not st.session_state.chat_messages:
+                st.caption("Ask me what to guess next, or anything about "
+                           "your guesses.")
+            for role, text in st.session_state.chat_messages:
+                st.markdown(chat_bubble(role, text), unsafe_allow_html=True)
+
+            if new_question:
+                # GUARDRAIL: answer_question checks the input and refuses
+                # anything that is not about this game. If the player asks
+                # what to guess, it runs the suggestion agent (plan, act,
+                # check) as a tool.
+                typing = st.empty()
+                typing.markdown(TYPING_DOTS, unsafe_allow_html=True)
+                result = answer_question(
+                    question, low, high, st.session_state.history,
+                    st.session_state.hints, st.session_state.last_advice
+                )
+                if result["advice"] is not None:
+                    st.session_state.last_advice = result["advice"]
+                st.session_state.chat_messages.append(
+                    ("assistant", result["answer"])
+                )
+                typing.markdown(chat_bubble("assistant", result["answer"]),
+                                unsafe_allow_html=True)
+
+            # UI: quick questions appear under the AI's latest answer;
+            # clicking one sends it right away
+            messages = st.session_state.chat_messages
+            if messages and messages[-1][0] == "assistant":
+                with st.container(key="coach_chips", horizontal=True,
+                                  gap="small"):
+                    for number, text in enumerate(QUICK_QUESTIONS):
+                        st.button(text, key=f"coach_chip_{number}",
+                                  on_click=ask_quick_question, args=(text,))
 
 # FIX: I found the game got stuck after a win; Claude found New Game never
 # reset the status or history and always used 1-100, fixed all three, and
@@ -219,6 +418,8 @@ if new_game:
     st.session_state.status = "playing"
     st.session_state.history = []
     st.session_state.hints = []
+    st.session_state.chat_messages = []
+    st.session_state.last_advice = None
     st.success("New game started.")
     st.rerun()
 
@@ -228,25 +429,6 @@ if st.session_state.status != "playing":
     else:
         st.error("Game over. Start a new game to try again.")
     st.stop()
-
-# AI FEATURE: the coach only gets the range, the guesses and their hints,
-# never the secret. Asking it does not cost an attempt, and the player
-# decides whether to follow its suggestion.
-if ask_coach:
-    # UI: the "thinking" message and then the answer both show in a
-    # rectangle next to the 🤖 square
-    with st.container(key="coach_message"):
-        with st.spinner("The AI Coach is thinking..."):
-            advice = get_coach_advice(
-                low, high, st.session_state.history, st.session_state.hints
-            )
-        if advice["source"] == "ai":
-            label = "Coach suggests"
-        else:
-            label = "Fallback suggestion"
-        st.markdown(
-            f"**{label} {advice['guess']}**: {advice['reason']}"
-        )
 
 if submit:
     ok, guess_int, err = parse_guess(raw_guess)
