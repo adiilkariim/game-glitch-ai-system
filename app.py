@@ -13,7 +13,7 @@ from logic_utils import (
     update_score,
     get_temperature,
 )
-# AI FEATURE: the AI Coach agent that suggests the next guess
+# AI FEATURE: Clue, the AI helper (chat + suggestion agent)
 from ai_coach import answer_question
 
 st.set_page_config(page_title="Glitchy Guesser", page_icon="🎮")
@@ -166,7 +166,7 @@ with col2:
 with col3:
     show_hint = st.checkbox("Show hint", value=True, key="show_hint")
 
-# UI: the AI Coach is a square 🤖 button fixed in the bottom-right corner.
+# UI: Clue opens from a square 🤖 button fixed in the bottom-right corner.
 # Clicking it opens or closes a tall chat panel just above it.
 st.markdown(
     """

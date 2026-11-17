@@ -7,7 +7,19 @@ flowchart TD
         Guard -->|valid guess| Check
     end
 
-    subgraph Agent["AI Coach agent (ai_coach.py)"]
+    subgraph Clue["Clue chat (ai_coach.py)"]
+        Input["Input check<br/>empty or over 200 chars?"]
+        Ask["Chat prompt: topic rules,<br/>history and hints, question<br/>in tags (never the secret)"]
+        Read{"CHECK reply<br/>valid JSON?"}
+        Answer["Answer + Try this number"]
+        Refuse["Refusal message<br/>(written by code)"]
+        Input -->|ok| Ask --> Read
+        Read -->|no: retry once,<br/>then fallback| Ask
+        Read -->|on-topic| Answer
+        Read -->|off-topic| Refuse
+    end
+
+    subgraph Agent["Suggestion agent (tool)"]
         Plan["1. PLAN<br/>numbers still possible"]
         Act["2. ACT<br/>specialized prompt"]
         Verify["3. CHECK<br/>valid JSON and in range?"]
@@ -18,20 +30,27 @@ flowchart TD
     end
 
     Player -->|types a guess| Guard
-    Player -->|"clicks AI Coach:<br/>range, history, hints<br/>(never the secret)"| Plan
-    Act <-->|prompt / JSON| Gemini[["Gemini API"]]
-    Agent -.->|4. LOG each step| Log[("logs/coach.log")]
+    Player -->|"opens Clue, types a message<br/>or clicks a quick question"| Input
+    Read -->|wants a number to try| Plan
+    Answer -->|needs a new number| Plan
+    Ask <-->|prompt / JSON| Gemini[["Gemini API"]]
+    Act <-->|prompt / JSON| Gemini
+    Clue -.->|4. LOG each step| Log[("logs/coach.log")]
+    Agent -.-> Log
 
     Result([Player sees the result])
     Guard -->|invalid: error,<br/>no attempt used| Result
     Check -->|hint| Result
-    Verify -->|"yes: suggestion<br/>(player decides = human-in-the-loop)"| Result
-    Fallback -->|suggestion| Result
+    Input -->|empty or too long:<br/>no AI call| Result
+    Answer --> Result
+    Refuse --> Result
+    Verify -->|"yes: Try this number<br/>(player decides = human-in-the-loop)"| Result
+    Fallback -->|Try this number| Result
 
     subgraph Testing["Testing and evaluation"]
-        Pytest["pytest: 17 tests<br/>(AI mocked)"]
+        Pytest["pytest: 27 tests<br/>(AI mocked)"]
         Eval["evaluate.py: 8 cases<br/>real Gemini, specialized vs baseline"]
     end
     Game -.->|checked by| Pytest
-    Agent -.->|checked by| Pytest
+    Clue -.->|checked by| Pytest
     Agent -.->|measured by| Eval
